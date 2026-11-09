@@ -260,6 +260,36 @@ await t('cliente não acessa funções de integração', () => como(U.adminA, as
   await nega(q(`select public.buscar_usuario_por_email('admin@b.test')`), /permission denied/);
   await nega(q(`select * from public.emails_pendentes(1)`), /permission denied/);
 }));
+const COM = id(7), ORG_C = id(103);
+await db.exec(`
+  insert into auth.users values ('${COM}','comercial@p.test');
+  insert into public.staff (user_id, nome, papel) values ('${COM}','Comercial','comercial');
+`);
+const PRESTAI = '11111111-2222-4333-8444-555555555555';
+await t('vínculo PrestAí: organização sem CNPJ e identificador único', () => como(COM, async () => {
+  await q(`insert into public.organizations (id, razao_social) values ($1,'Org sem CNPJ')`, [ORG_C]);
+  await q(`update public.organizations set prestai_org_id=$1 where id=$2`, [PRESTAI, ORG_C]);
+  await nega(q(`update public.organizations set prestai_org_id=$1 where id=$2`, [PRESTAI, ORG_A]), /duplicate key|unique/);
+  await nega(q(`insert into public.organizations (razao_social, cnpj) values ('CNPJ ruim','123')`));
+  await q(`update public.projects set prestai_project_id=$1 where id=$2`, [PRESTAI, PROJ_A]);
+  await nega(q(`update public.projects set prestai_project_id=$1 where id=$2`, [PRESTAI, PROJ_B]), /duplicate key|unique/);
+}, 'aal2'));
+await t('vínculo PrestAí: só o comercial com MFA grava o usuário', async () => {
+  const [m] = await q(`select id from public.org_members where user_id=$1`, [U.membroA]);
+  const vincular = () => q(`select public.vincular_usuario_prestai($1,$2)`, [m.id, PRESTAI]);
+  await como(U.adminA, () => nega(vincular(), /Sem acesso/), 'aal2');
+  await como(U.equipe, () => nega(vincular(), /Sem acesso/), 'aal2');
+  await como(COM, () => nega(vincular(), /Sem acesso/));
+  await como(U.adminA, () => nega(q(`update public.org_members set prestai_user_id=$1`, [PRESTAI])));
+  assert.equal((await q(`select prestai_user_id from public.org_members where id=$1`, [m.id]))[0].prestai_user_id, null);
+  await como(COM, () => vincular(), 'aal2');
+  assert.equal((await q(`select prestai_user_id from public.org_members where id=$1`, [m.id]))[0].prestai_user_id, PRESTAI);
+  await como(COM, () => nega(q(`select public.vincular_usuario_prestai($1,$2)`, [id(999), PRESTAI]), /não encontrado/), 'aal2');
+});
+await t('vínculo PrestAí: cliente não altera o identificador da organização', async () => {
+  await como(U.adminA, () => q(`update public.organizations set prestai_org_id=$1 where id=$2`, [id(555), ORG_A]), 'aal2');
+  assert.equal((await q(`select prestai_org_id from public.organizations where id=$1`, [ORG_A]))[0].prestai_org_id, null);
+});
 await t('RLS ligada em todas as tabelas e funções sem execução pública', async () => {
   const semRls = await q(`select relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname='public' and c.relkind='r' and not c.relrowsecurity`);

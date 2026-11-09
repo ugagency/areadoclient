@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, data, mensagemErro } from '../lib/api';
-import { ROTULO_TIPO, type Categoria, type Chamado, type Material, type Membro, type Organizacao } from '../lib/tipos';
+import { PADRAO_UUID, ROTULO_TIPO, type Categoria, type Chamado, type Material, type Membro, type Organizacao, type ProjetoEquipe } from '../lib/tipos';
 import { useApp } from '../main';
 import { SeloStatus } from './Suporte';
 
@@ -39,18 +39,50 @@ function PassoMfa() {
   );
 }
 
+function IdPrestai({ rotulo, valor, aoSalvar }: { rotulo: string; valor: string | null; aoSalvar: (v: string | null) => Promise<void> }) {
+  const [edit, setEdit] = useState(false);
+  const [txt, setTxt] = useState(valor ?? '');
+  useEffect(() => { setTxt(valor ?? ''); }, [valor]);
+  if (!edit) {
+    return (
+      <div className="fraco" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span>{rotulo}:</span>
+        {valor ? <code>{valor}</code> : <span className="selo vez">Sem vínculo</span>}
+        <button type="button" className="btn contorno pequeno" onClick={() => setEdit(true)}>{valor ? 'Alterar' : 'Informar'}</button>
+      </div>
+    );
+  }
+  return (
+    <form style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }} onSubmit={async (e) => {
+      e.preventDefault();
+      await aoSalvar(txt.trim() || null);
+      setEdit(false);
+    }}>
+      <input aria-label={rotulo} placeholder="uuid do PrestAí" pattern={PADRAO_UUID} value={txt} onChange={(e) => setTxt(e.target.value)} style={{ minWidth: 280 }} />
+      <button className="btn pequeno">Salvar</button>
+      <button type="button" className="btn contorno pequeno" onClick={() => { setTxt(valor ?? ''); setEdit(false); }}>Cancelar</button>
+    </form>
+  );
+}
+
 function Organizacoes() {
   const [orgs, setOrgs] = useState<Organizacao[]>([]);
   const [sel, setSel] = useState<Organizacao | null>(null);
   const [membros, setMembros] = useState<Membro[]>([]);
-  const [nova, setNova] = useState({ razao: '', cnpj: '' });
+  const [projetos, setProjetos] = useState<ProjetoEquipe[]>([]);
+  const [novoProj, setNovoProj] = useState({ pronac: '', nome: '', prestaiProjeto: '' });
+  const [nova, setNova] = useState({ razao: '', cnpj: '', prestaiOrg: '' });
   const [conv, setConv] = useState({ nome: '', email: '', papel: 'admin' });
   const [erro, setErro] = useState('');
   const [ok, setOk] = useState('');
 
   const carregar = useCallback(() => api.organizacoes().then(setOrgs).catch((e) => setErro(mensagemErro(e))), []);
   useEffect(() => { carregar(); }, [carregar]);
-  const verMembros = (o: Organizacao) => api.membros(o.id).then((m) => { setSel(o); setMembros(m); });
+  const verMembros = (o: Organizacao) => Promise.all([api.membros(o.id), api.projetosOrg(o.id)]).then(([m, p]) => { setSel(o); setMembros(m); setProjetos(p); });
+  const recarregarSel = async (id: string) => {
+    const lista = await api.organizacoes(); setOrgs(lista);
+    const o = lista.find((x) => x.id === id); if (o) await verMembros(o);
+  };
 
   async function tentar(fn: () => Promise<void>, sucesso = '') {
     setErro(''); setOk('');
@@ -62,17 +94,19 @@ function Organizacoes() {
       <div>
         <form className="card" style={{ marginBottom: 16 }} onSubmit={(e) => {
           e.preventDefault();
-          tentar(async () => { await api.criarOrganizacao(nova.razao, nova.cnpj); setNova({ razao: '', cnpj: '' }); await carregar(); });
+          tentar(async () => { await api.criarOrganizacao(nova); setNova({ razao: '', cnpj: '', prestaiOrg: '' }); await carregar(); });
         }}>
           <h2 className="h2" style={{ marginBottom: 16 }}>Nova organização</h2>
           <label className="campo"><span>Razão social</span><input required value={nova.razao} onChange={(e) => setNova({ ...nova, razao: e.target.value })} /></label>
-          <label className="campo"><span>CNPJ</span><input required pattern="[0-9./\-]{14,18}" value={nova.cnpj} onChange={(e) => setNova({ ...nova, cnpj: e.target.value })} /></label>
+          <label className="campo"><span>CNPJ (opcional)</span><input pattern="[0-9./\-]{14,18}" value={nova.cnpj} onChange={(e) => setNova({ ...nova, cnpj: e.target.value })} /></label>
+          <label className="campo"><span>ID da organização no PrestAí</span><input pattern={PADRAO_UUID} placeholder="uuid copiado do PrestAí" value={nova.prestaiOrg} onChange={(e) => setNova({ ...nova, prestaiOrg: e.target.value })} /></label>
           <button className="btn pequeno">Criar</button>
         </form>
         <div className="lista">
           {orgs.map((o) => (
             <button key={o.id} className="linha" style={{ textAlign: 'left', cursor: 'pointer', width: '100%' }} onClick={() => verMembros(o)}>
-              <div className="corpo"><b>{o.razao_social}</b><div className="fraco">{o.cnpj}</div></div>
+              <div className="corpo"><b>{o.razao_social}</b><div className="fraco">{o.cnpj ?? 'Sem CNPJ'}</div></div>
+              {!o.prestai_org_id && <span className="selo vez">Sem ID PrestAí</span>}
               <span className="selo">{o.status}</span>
             </button>
           ))}
@@ -83,11 +117,17 @@ function Organizacoes() {
         {ok && <div className="aviso" role="status">{ok}</div>}
         {!sel ? <p className="mudo">Selecione uma organização para ver e convidar usuários.</p> : (
           <>
-            <h2 className="h2" style={{ marginBottom: 14 }}>{sel.razao_social}</h2>
+            <h2 className="h2" style={{ marginBottom: 10 }}>{sel.razao_social}</h2>
+            <div style={{ marginBottom: 16 }}>
+              <IdPrestai rotulo="ID no PrestAí" valor={sel.prestai_org_id} aoSalvar={async (v) => { await tentar(async () => { await api.vincularOrganizacao(sel.id, v); await recarregarSel(sel.id); }, 'Vínculo atualizado.'); }} />
+            </div>
             <div className="lista" style={{ marginBottom: 20 }}>
               {membros.map((m) => (
                 <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div><b style={{ fontSize: 14.5 }}>{m.nome}</b><div className="fraco">{m.papel} · {m.situacao}</div></div>
+                  <div>
+                    <b style={{ fontSize: 14.5 }}>{m.nome}</b><div className="fraco">{m.papel} · {m.situacao}</div>
+                    <IdPrestai rotulo="ID do usuário no PrestAí" valor={m.prestai_user_id} aoSalvar={async (v) => { await tentar(async () => { await api.vincularMembro(m.id, v); await verMembros(sel); }, 'Vínculo atualizado.'); }} />
+                  </div>
                   {m.situacao === 'ativo' && <button className="btn contorno pequeno" onClick={() => tentar(async () => { await api.alterarMembro(m.id, 'suspenso'); await verMembros(sel); })}>Suspender</button>}
                   {m.situacao === 'suspenso' && <button className="btn contorno pequeno" onClick={() => tentar(async () => { await api.alterarMembro(m.id, 'ativo'); await verMembros(sel); })}>Reativar</button>}
                 </div>
@@ -106,6 +146,25 @@ function Organizacoes() {
                 </select>
               </label>
               <button className="btn pequeno">Enviar convite</button>
+            </form>
+            <h3 className="h2" style={{ margin: '24px 0 12px' }}>Projetos</h3>
+            <div className="lista" style={{ marginBottom: 16 }}>
+              {projetos.map((p) => (
+                <div key={p.id}>
+                  <b style={{ fontSize: 14.5 }}>{p.pronac} · {p.nome}</b>
+                  <IdPrestai rotulo="ID do projeto no PrestAí" valor={p.prestai_project_id} aoSalvar={async (v) => { await tentar(async () => { await api.vincularProjeto(p.id, v); await verMembros(sel); }, 'Vínculo atualizado.'); }} />
+                </div>
+              ))}
+              {!projetos.length && <p className="mudo">Nenhum projeto.</p>}
+            </div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              tentar(async () => { await api.criarProjeto(sel.id, novoProj); setNovoProj({ pronac: '', nome: '', prestaiProjeto: '' }); await verMembros(sel); }, 'Projeto criado.');
+            }}>
+              <label className="campo"><span>PRONAC</span><input required value={novoProj.pronac} onChange={(e) => setNovoProj({ ...novoProj, pronac: e.target.value })} /></label>
+              <label className="campo"><span>Nome do projeto</span><input required value={novoProj.nome} onChange={(e) => setNovoProj({ ...novoProj, nome: e.target.value })} /></label>
+              <label className="campo"><span>ID do projeto no PrestAí (opcional)</span><input pattern={PADRAO_UUID} value={novoProj.prestaiProjeto} onChange={(e) => setNovoProj({ ...novoProj, prestaiProjeto: e.target.value })} /></label>
+              <button className="btn pequeno">Criar projeto</button>
             </form>
           </>
         )}

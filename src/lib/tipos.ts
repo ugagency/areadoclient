@@ -59,8 +59,12 @@ export type Material = {
   updated_at: string;
 };
 
-export type Organizacao = { id: string; razao_social: string; cnpj: string; status: string };
-export type Membro = { id: string; nome: string; papel: 'admin' | 'membro'; situacao: string; user_id: string };
+export type Organizacao = { id: string; razao_social: string; cnpj: string | null; status: string; prestai_org_id: string | null };
+export type Membro = { id: string; nome: string; papel: 'admin' | 'membro'; situacao: string; user_id: string; prestai_user_id: string | null };
+export type ProjetoEquipe = { id: string; pronac: string; nome: string; ativo: boolean; prestai_project_id: string | null };
+
+// Identificador do sistema PrestAí: UUID, cadastrado à mão pelo comercial.
+export const PADRAO_UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 
 export const ROTULO_STATUS: Record<StatusChamado, string> = {
   aberto: 'Aberto',
@@ -104,8 +108,13 @@ export type Api = {
   mfaIniciar(): Promise<{ fatorId: string; qr: string; segredo: string } | { fatorId: string; qr: null; segredo: null }>;
   mfaConfirmar(fatorId: string, codigo: string): Promise<void>;
   organizacoes(): Promise<Organizacao[]>;
-  criarOrganizacao(razao: string, cnpj: string): Promise<void>;
+  criarOrganizacao(d: { razao: string; cnpj: string; prestaiOrg: string }): Promise<void>;
+  vincularOrganizacao(id: string, prestaiOrg: string | null): Promise<void>;
   membros(org: string): Promise<Membro[]>;
+  vincularMembro(id: string, prestaiUser: string | null): Promise<void>;
+  projetosOrg(org: string): Promise<ProjetoEquipe[]>;
+  criarProjeto(org: string, d: { pronac: string; nome: string; prestaiProjeto: string }): Promise<void>;
+  vincularProjeto(id: string, prestaiProjeto: string | null): Promise<void>;
   convidar(org: string, email: string, nome: string, papel: string): Promise<void>;
   alterarMembro(id: string, situacao: string): Promise<void>;
   todosMateriais(): Promise<Material[]>;

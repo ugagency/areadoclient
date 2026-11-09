@@ -6,9 +6,19 @@ const sb = createClient(import.meta.env.VITE_SUPABASE_URL ?? '', import.meta.env
 // Mensagens de regra de negócio vêm do banco em português. O resto vira texto genérico.
 const REGRA = new Set(['P0001', 'P0002', '22023', '42501']);
 export class ErroApp extends Error {}
+
+// Duplicidade vem do banco com o nome da restrição; aqui vira frase para quem cadastra.
+function duplicado(m: string) {
+  if (m.includes('prestai')) return 'Esse ID do PrestAí já está ligado a outro registro.';
+  if (m.includes('cnpj')) return 'Já existe uma organização com esse CNPJ.';
+  if (m.includes('pronac')) return 'Esse PRONAC já está cadastrado nesta organização.';
+  return 'Esse registro já existe.';
+}
+
 function ok<T>(r: { data: T | null; error: { code?: string; message: string } | null }): T {
   if (r.error) {
-    const msg = r.error.code && REGRA.has(r.error.code) ? r.error.message : 'Não foi possível concluir. Tente de novo.';
+    const msg = r.error.code === '23505' ? duplicado(r.error.message)
+      : r.error.code && REGRA.has(r.error.code) ? r.error.message : 'Não foi possível concluir. Tente de novo.';
     throw new ErroApp(msg);
   }
   return r.data as T;
@@ -130,13 +140,32 @@ export const real: Api = {
   },
 
   async organizacoes() {
-    return ok(await sb.from('organizations').select('id, razao_social, cnpj, status').order('razao_social')) as any;
+    return ok(await sb.from('organizations').select('id, razao_social, cnpj, status, prestai_org_id').order('razao_social')) as any;
   },
-  async criarOrganizacao(razao, cnpj) {
-    ok(await sb.from('organizations').insert({ razao_social: razao, cnpj: cnpj.replace(/\D/g, '') }));
+  async criarOrganizacao(d) {
+    ok(await sb.from('organizations').insert({
+      razao_social: d.razao.trim(), cnpj: d.cnpj.replace(/\D/g, '') || null, prestai_org_id: d.prestaiOrg.trim() || null,
+    }));
+  },
+  async vincularOrganizacao(id, prestaiOrg) {
+    ok(await sb.from('organizations').update({ prestai_org_id: prestaiOrg }).eq('id', id));
   },
   async membros(org) {
-    return ok(await sb.from('org_members').select('id, nome, papel, situacao, user_id').eq('organization_id', org).order('nome')) as any;
+    return ok(await sb.from('org_members').select('id, nome, papel, situacao, user_id, prestai_user_id').eq('organization_id', org).order('nome')) as any;
+  },
+  async vincularMembro(id, prestaiUser) {
+    ok(await sb.rpc('vincular_usuario_prestai', { p_member_id: id, p_prestai_user_id: prestaiUser }));
+  },
+  async projetosOrg(org) {
+    return ok(await sb.from('projects').select('id, pronac, nome, ativo, prestai_project_id').eq('organization_id', org).order('pronac')) as any;
+  },
+  async criarProjeto(org, d) {
+    ok(await sb.from('projects').insert({
+      organization_id: org, pronac: d.pronac.trim(), nome: d.nome.trim(), prestai_project_id: d.prestaiProjeto.trim() || null,
+    }));
+  },
+  async vincularProjeto(id, prestaiProjeto) {
+    ok(await sb.from('projects').update({ prestai_project_id: prestaiProjeto }).eq('id', id));
   },
   async convidar(org, email, nome, papel) {
     const { data, error } = await sb.functions.invoke('convidar-usuario', {

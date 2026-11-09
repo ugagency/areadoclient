@@ -32,3 +32,9 @@
 - Migrations, RLS e filas foram testadas em Postgres local que imita o Supabase, não em projeto real.
 - Edge Functions não foram executadas.
 - Telas foram testadas em navegador com `demo.ts`; `real.ts` não rodou contra um Supabase real.
+
+## Passo 7 — vínculo com o PrestAí (09/11/2026)
+
+- Feito no código: migração 20261109000007 (prestai_user_id, prestai_project_id, CNPJ opcional, índices únicos, RPC vincular_usuario_prestai), 3 testes novos (31 no total) e telas da equipe (ID PrestAí por organização, usuário e projeto; criação de projeto).
+- Pendente: aplicar a migração 7 no projeto Supabase real e validar real.ts contra ele (nunca foi executado contra o banco real).
+- Pendente: confirmar com o PrestAí que os ids de organização, projeto e usuário são uuid (premissa do campo).

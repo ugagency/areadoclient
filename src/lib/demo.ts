@@ -1,15 +1,19 @@
 // Dados fictícios em memória, para demonstração e verificação de tela sem Supabase.
 // Só entra no pacote com VITE_DEMO=1.
-import type { Api, Categoria, Chamado, Material, Membro, Mensagem, Organizacao, Sessao } from './tipos';
+import type { Api, Categoria, Chamado, Material, Membro, Mensagem, Organizacao, ProjetoEquipe, Sessao } from './tipos';
 
 const agora = () => new Date().toISOString();
 const atras = (h: number) => new Date(Date.now() - h * 3600e3).toISOString();
 const gid = () => Math.random().toString(36).slice(2);
 
 const orgs: Organizacao[] = [
-  { id: 'org1', razao_social: 'Instituto Exemplo de Cultura', cnpj: '00000000000100', status: 'ativa' },
-  { id: 'org2', razao_social: 'Associação Modelo das Artes', cnpj: '00000000000200', status: 'ativa' },
+  { id: 'org1', razao_social: 'Instituto Exemplo de Cultura', cnpj: '00000000000100', status: 'ativa', prestai_org_id: '6f1c2a40-0000-4000-8000-000000000001' },
+  { id: 'org2', razao_social: 'Associação Modelo das Artes', cnpj: null, status: 'ativa', prestai_org_id: null },
 ];
+const projetos: Record<string, ProjetoEquipe[]> = {
+  org1: [{ id: 'p1', pronac: '000001', nome: 'Projeto de exemplo', ativo: true, prestai_project_id: null }],
+  org2: [],
+};
 const categorias: Categoria[] = [
   { id: 'c1', nome: 'Dúvida de uso', ativa: true, exige_humano: false },
   { id: 'c2', nome: 'Erro no sistema', ativa: true, exige_humano: true },
@@ -31,8 +35,8 @@ const materiais: Material[] = [
 ];
 const membros: Record<string, Membro[]> = {
   org1: [
-    { id: 'mb1', nome: 'Pessoa Administradora', papel: 'admin', situacao: 'ativo', user_id: 'u1' },
-    { id: 'mb2', nome: 'Pessoa Convidada', papel: 'membro', situacao: 'convidado', user_id: 'u2' },
+    { id: 'mb1', nome: 'Pessoa Administradora', papel: 'admin', situacao: 'ativo', user_id: 'u1', prestai_user_id: null },
+    { id: 'mb2', nome: 'Pessoa Convidada', papel: 'membro', situacao: 'convidado', user_id: 'u2', prestai_user_id: null },
   ],
   org2: [],
 };
@@ -99,14 +103,21 @@ export const demo: Api = {
   async mfaIniciar() { return { fatorId: 'f', qr: null, segredo: null }; },
   async mfaConfirmar() { mfaOk = true; avisar(); },
   async organizacoes() { return orgs; },
-  async criarOrganizacao(razao, cnpj) {
+  async criarOrganizacao(d) {
     const id = gid();
-    orgs.push({ id, razao_social: razao, cnpj, status: 'ativa' });
-    membros[id] = [];
+    orgs.push({ id, razao_social: d.razao, cnpj: d.cnpj.replace(/\D/g, '') || null, status: 'ativa', prestai_org_id: d.prestaiOrg || null });
+    membros[id] = []; projetos[id] = [];
   },
+  async vincularOrganizacao(id, p) { orgs.find((o) => o.id === id)!.prestai_org_id = p; },
   async membros(org) { return membros[org] ?? []; },
+  async vincularMembro(id, p) { Object.values(membros).flat().filter((m) => m.id === id).forEach((m) => { m.prestai_user_id = p; }); },
+  async projetosOrg(org) { return projetos[org] ?? []; },
+  async criarProjeto(org, d) {
+    (projetos[org] ??= []).push({ id: gid(), pronac: d.pronac, nome: d.nome, ativo: true, prestai_project_id: d.prestaiProjeto || null });
+  },
+  async vincularProjeto(id, p) { Object.values(projetos).flat().filter((x) => x.id === id).forEach((x) => { x.prestai_project_id = p; }); },
   async convidar(org, _email, nome, papel) {
-    (membros[org] ??= []).push({ id: gid(), nome, papel: papel as any, situacao: 'convidado', user_id: gid() });
+    (membros[org] ??= []).push({ id: gid(), nome, papel: papel as any, situacao: 'convidado', user_id: gid(), prestai_user_id: null });
   },
   async alterarMembro(id, situacao) {
     Object.values(membros).flat().filter((m) => m.id === id).forEach((m) => { m.situacao = situacao; });
