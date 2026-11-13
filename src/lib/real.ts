@@ -11,7 +11,6 @@ export class ErroApp extends Error {}
 function duplicado(m: string) {
   if (m.includes('slug')) return 'Esse slug do PrestAí já está ligado a outra organização.';
   if (m.includes('prestai')) return 'Esse ID do PrestAí já está ligado a outro registro.';
-  if (m.includes('cnpj')) return 'Já existe uma organização com esse CNPJ.';
   if (m.includes('pronac')) return 'Esse PRONAC já está cadastrado nesta organização.';
   return 'Esse registro já existe.';
 }
@@ -22,7 +21,6 @@ let mfaEmCurso: Promise<FatorMfa> | null = null;
 function ok<T>(r: { data: T | null; error: { code?: string; message: string } | null }): T {
   if (r.error) {
     const msg = r.error.code === '23505' ? duplicado(r.error.message)
-      : r.error.code === '23514' && /cnpj/i.test(r.error.message) ? 'CNPJ inválido. Informe os 14 dígitos.'
       : r.error.code === '23514' && /slug/i.test(r.error.message) ? 'Slug inválido. Use letras minúsculas, números e hífens, como no PrestAí.'
       : r.error.code && REGRA.has(r.error.code) ? r.error.message : 'Não foi possível concluir. Tente de novo.';
     throw new ErroApp(msg);
@@ -151,13 +149,22 @@ export const real: Api = {
   },
 
   async organizacoes() {
-    return ok(await sb.from('organizations').select('id, razao_social, cnpj, status, prestai_org_id, prestai_org_slug').order('razao_social')) as any;
+    return ok(await sb.from('organizations').select('id, razao_social, status, prestai_org_id, prestai_org_slug').order('razao_social')) as any;
   },
   async criarOrganizacao(d) {
     ok(await sb.from('organizations').insert({
-      razao_social: d.razao.trim(), cnpj: d.cnpj.replace(/\D/g, '') || null, prestai_org_id: d.prestaiOrg.trim() || null,
-      prestai_org_slug: d.prestaiSlug.trim().toLowerCase() || null,
+      razao_social: d.razao.trim(), prestai_org_slug: d.prestaiSlug.trim().toLowerCase() || null,
     }));
+  },
+  async buscarOrganizacaoPrestai(slug) {
+    const { data, error } = await sb.functions.invoke('organizacao-prestai', { body: { acao: 'buscar', slug } });
+    if (error || data?.erro) throw new ErroApp(data?.erro ?? 'Não foi possível consultar o PrestAí.');
+    return data;
+  },
+  async cadastrarOrganizacaoPrestai(slug) {
+    const { data, error } = await sb.functions.invoke('organizacao-prestai', { body: { acao: 'cadastrar', slug } });
+    if (error || data?.erro) throw new ErroApp(data?.erro ?? 'Não foi possível cadastrar a organização.');
+    return { criados: data.criados, ignorados: data.ignorados };
   },
   async vincularSlugOrganizacao(id, slug) {
     ok(await sb.from('organizations').update({ prestai_org_slug: slug ? slug.trim().toLowerCase() : null }).eq('id', id));

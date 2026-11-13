@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, data, mensagemErro } from '../lib/api';
-import { PADRAO_SLUG, PADRAO_UUID, ROTULO_TIPO, type Categoria, type Chamado, type Material, type Membro, type Organizacao, type ProjetoEquipe } from '../lib/tipos';
+import { PADRAO_SLUG, PADRAO_UUID, ROTULO_TIPO, type Categoria, type Chamado, type Material, type Membro, type Organizacao, type BuscaPrestai, type ProjetoEquipe } from '../lib/tipos';
 import { useApp } from '../main';
 import { SeloStatus } from './Suporte';
 
@@ -72,7 +72,10 @@ function Organizacoes() {
   const [projetos, setProjetos] = useState<ProjetoEquipe[]>([]);
   const [novoProj, setNovoProj] = useState({ pronac: '', nome: '', prestaiProjeto: '' });
   const [lote, setLote] = useState('');
-  const [nova, setNova] = useState({ razao: '', cnpj: '', prestaiOrg: '', prestaiSlug: '' });
+  const [nova, setNova] = useState({ razao: '', prestaiSlug: '' });
+  const [slugBusca, setSlugBusca] = useState('');
+  const [achada, setAchada] = useState<BuscaPrestai | null>(null);
+  const [statusBusca, setStatusBusca] = useState('');
   const [conv, setConv] = useState({ nome: '', email: '', papel: 'admin' });
   const [erro, setErro] = useState('');
   const [ok, setOk] = useState('');
@@ -85,6 +88,23 @@ function Organizacoes() {
     const o = lista.find((x) => x.id === id); if (o) await verMembros(o);
   };
 
+  // Ao digitar o slug, a organização é buscada sozinha no PrestAí (com pequena espera entre as teclas).
+  useEffect(() => {
+    setAchada(null);
+    if (!slugBusca) { setStatusBusca(''); return; }
+    if (slugBusca.length < 2 || !new RegExp(`^${PADRAO_SLUG}$`).test(slugBusca)) {
+      setStatusBusca('Use letras minúsculas, números e hífens.'); return;
+    }
+    setStatusBusca('Buscando no PrestAí...');
+    let valido = true;
+    const t = setTimeout(() => {
+      api.buscarOrganizacaoPrestai(slugBusca)
+        .then((r) => { if (valido) { setAchada(r); setStatusBusca(''); } })
+        .catch((x) => { if (valido) setStatusBusca(mensagemErro(x)); });
+    }, 500);
+    return () => { valido = false; clearTimeout(t); };
+  }, [slugBusca]);
+
   async function tentar(fn: () => Promise<void | string>, sucesso = '') {
     setErro(''); setOk('');
     try { const msg = await fn(); setOk(typeof msg === 'string' ? msg : sucesso); } catch (x) { setErro(mensagemErro(x)); }
@@ -93,20 +113,49 @@ function Organizacoes() {
   return (
     <div className="duas">
       <div>
-        <form className="card" style={{ marginBottom: 16 }} onSubmit={(e) => {
-          e.preventDefault();
-          tentar(async () => { await api.criarOrganizacao(nova); setNova({ razao: '', cnpj: '', prestaiOrg: '', prestaiSlug: '' }); await carregar(); });
-        }}>
+        <div className="card" style={{ marginBottom: 16 }}>
           <h2 className="h2" style={{ marginBottom: 16 }}>Nova organização</h2>
-          <label className="campo"><span>Razão social</span><input required value={nova.razao} onChange={(e) => setNova({ ...nova, razao: e.target.value })} /></label>
-          <label className="campo"><span>CNPJ (opcional)</span><input pattern="[0-9]{2}\.?[0-9]{3}\.?[0-9]{3}\/?[0-9]{4}-?[0-9]{2}" title="CNPJ com 14 dígitos" value={nova.cnpj} onChange={(e) => setNova({ ...nova, cnpj: e.target.value })} /></label>
-          <label className="campo"><span>Slug da organização no PrestAí</span><input pattern={PADRAO_SLUG} title="Letras minúsculas, números e hífens, como aparece na tela de suporte do PrestAí" placeholder="instituto-exemplo" value={nova.prestaiSlug} onChange={(e) => setNova({ ...nova, prestaiSlug: e.target.value.trim().toLowerCase() })} /></label>
-          <button className="btn pequeno">Criar</button>
-        </form>
+          <label className="campo"><span>Slug da organização no PrestAí</span>
+            <input placeholder="instituto-exemplo" autoComplete="off" value={slugBusca}
+              onChange={(e) => setSlugBusca(e.target.value.trim().toLowerCase())} />
+          </label>
+          {statusBusca && <p className="fraco" role="status">{statusBusca}</p>}
+          {achada && (
+            <div style={{ marginTop: 12 }}>
+              <b>{achada.nome}</b>
+              <div className="fraco" style={{ marginBottom: 8 }}>
+                {achada.projetos.length} projeto(s) no PrestAí
+                {achada.jaCadastrada ? ' · já cadastrada aqui' : ''}{!achada.ativa ? ' · inativa no PrestAí' : ''}
+              </div>
+              {achada.projetos.length > 0 && (
+                <ul className="mudo" style={{ margin: '0 0 12px 18px', padding: 0 }}>
+                  {achada.projetos.slice(0, 6).map((p, i) => <li key={i}>{p.pronac ?? 'sem PRONAC'} · {p.nome}</li>)}
+                  {achada.projetos.length > 6 && <li>e mais {achada.projetos.length - 6}</li>}
+                </ul>
+              )}
+              <button className="btn pequeno" disabled={achada.jaCadastrada || !achada.ativa} onClick={() => tentar(async () => {
+                const r = await api.cadastrarOrganizacaoPrestai(achada.slug);
+                setSlugBusca(''); setAchada(null); await carregar();
+                return `Organização cadastrada com ${r.criados} projeto(s).`;
+              })}>Cadastrar organização e projetos</button>
+            </div>
+          )}
+          <details style={{ marginTop: 16 }}>
+            <summary className="fraco" style={{ cursor: 'pointer' }}>Cadastro manual (se o PrestAí não responder)</summary>
+            <form style={{ marginTop: 12 }} onSubmit={(e) => {
+              e.preventDefault();
+              tentar(async () => { await api.criarOrganizacao(nova); setNova({ razao: '', prestaiSlug: '' }); await carregar(); }, 'Organização cadastrada.');
+            }}>
+              <label className="campo"><span>Nome da organização</span><input required value={nova.razao} onChange={(e) => setNova({ ...nova, razao: e.target.value })} /></label>
+              <label className="campo"><span>Slug no PrestAí</span><input required pattern={PADRAO_SLUG} value={nova.prestaiSlug} onChange={(e) => setNova({ ...nova, prestaiSlug: e.target.value.trim().toLowerCase() })} /></label>
+              <button className="btn contorno pequeno">Cadastrar manualmente</button>
+            </form>
+          </details>
+        </div>
         <div className="lista">
           {orgs.map((o) => (
             <button key={o.id} className="linha" style={{ textAlign: 'left', cursor: 'pointer', width: '100%' }} onClick={() => verMembros(o)}>
-              <div className="corpo"><b>{o.razao_social}</b><div className="fraco">{o.prestai_org_slug ?? 'Sem slug do PrestAí'}{o.cnpj ? ` · ${o.cnpj}` : ''}</div></div>
+              <div className="corpo"><b>{o.razao_social}</b><div className="fraco">{o.prestai_org_slug ?? 'Sem slug do PrestAí'}</div></div>
               {!o.prestai_org_slug && <span className="selo vez">Sem vínculo</span>}
               <span className="selo">{o.status}</span>
             </button>

@@ -7,8 +7,8 @@ const atras = (h: number) => new Date(Date.now() - h * 3600e3).toISOString();
 const gid = () => Math.random().toString(36).slice(2);
 
 const orgs: Organizacao[] = [
-  { id: 'org1', razao_social: 'Instituto Exemplo de Cultura', cnpj: '00000000000100', status: 'ativa', prestai_org_id: null, prestai_org_slug: 'instituto-exemplo' },
-  { id: 'org2', razao_social: 'Associação Modelo das Artes', cnpj: null, status: 'ativa', prestai_org_id: null, prestai_org_slug: null },
+  { id: 'org1', razao_social: 'Instituto Exemplo de Cultura', status: 'ativa', prestai_org_id: null, prestai_org_slug: 'instituto-exemplo' },
+  { id: 'org2', razao_social: 'Associação Modelo das Artes', status: 'ativa', prestai_org_id: null, prestai_org_slug: null },
 ];
 const projetos: Record<string, ProjetoEquipe[]> = {
   org1: [{ id: 'p1', pronac: '000001', nome: 'Projeto de exemplo', ativo: true, prestai_project_id: null }],
@@ -105,8 +105,26 @@ export const demo: Api = {
   async organizacoes() { return orgs; },
   async criarOrganizacao(d) {
     const id = gid();
-    orgs.push({ id, razao_social: d.razao, cnpj: d.cnpj.replace(/\D/g, '') || null, status: 'ativa', prestai_org_id: d.prestaiOrg || null, prestai_org_slug: d.prestaiSlug.trim().toLowerCase() || null });
+    orgs.push({ id, razao_social: d.razao, status: 'ativa', prestai_org_id: null, prestai_org_slug: d.prestaiSlug.trim().toLowerCase() || null });
     membros[id] = []; projetos[id] = [];
+  },
+  async buscarOrganizacaoPrestai(slug) {
+    const base: Record<string, { nome: string; projetos: { pronac: string; nome: string }[] }> = {
+      'instituto-exemplo': { nome: 'Instituto Exemplo de Cultura', projetos: [{ pronac: '000001', nome: 'Projeto de exemplo' }] },
+      'associacao-modelo': { nome: 'Associação Modelo das Artes', projetos: [{ pronac: '230001', nome: 'Festival de Música' }, { pronac: '230002', nome: 'Oficina de Teatro' }] },
+    };
+    const o = base[slug];
+    if (!o) throw new Error('Organização não encontrada no PrestAí.');
+    return { nome: o.nome, slug, ativa: true, jaCadastrada: orgs.some((x) => x.prestai_org_slug === slug), projetos: o.projetos };
+  },
+  async cadastrarOrganizacaoPrestai(slug) {
+    const o = await this.buscarOrganizacaoPrestai(slug);
+    if (o.jaCadastrada) throw new Error('Esta organização já está cadastrada.');
+    const id = gid();
+    orgs.push({ id, razao_social: o.nome, status: 'ativa', prestai_org_id: null, prestai_org_slug: slug });
+    membros[id] = [];
+    projetos[id] = o.projetos.map((p) => ({ id: gid(), pronac: p.pronac!, nome: p.nome, ativo: true, prestai_project_id: null }));
+    return { criados: o.projetos.length, ignorados: 0 };
   },
   async vincularSlugOrganizacao(id, s) { orgs.find((o) => o.id === id)!.prestai_org_slug = s; },
   async vincularOrganizacao(id, p) { orgs.find((o) => o.id === id)!.prestai_org_id = p; },

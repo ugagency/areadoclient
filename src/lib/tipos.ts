@@ -59,7 +59,8 @@ export type Material = {
   updated_at: string;
 };
 
-export type Organizacao = { id: string; razao_social: string; cnpj: string | null; status: string; prestai_org_id: string | null; prestai_org_slug: string | null };
+export type BuscaPrestai = { nome: string; slug: string; ativa: boolean; jaCadastrada: boolean; projetos: { pronac: string | null; nome: string }[] };
+export type Organizacao = { id: string; razao_social: string; status: string; prestai_org_id: string | null; prestai_org_slug: string | null };
 export type Membro = { id: string; nome: string; papel: 'admin' | 'membro'; situacao: string; user_id: string; prestai_user_id: string | null };
 export type ProjetoEquipe = { id: string; pronac: string; nome: string; ativo: boolean; prestai_project_id: string | null };
 
@@ -110,7 +111,10 @@ export type Api = {
   mfaIniciar(): Promise<{ fatorId: string; qr: string; segredo: string } | { fatorId: string; qr: null; segredo: null }>;
   mfaConfirmar(fatorId: string, codigo: string): Promise<void>;
   organizacoes(): Promise<Organizacao[]>;
-  criarOrganizacao(d: { razao: string; cnpj: string; prestaiOrg: string; prestaiSlug: string }): Promise<void>;
+  /** Cadastro manual, só para quando o PrestAí não responder. O caminho normal é buscar pelo slug. */
+  criarOrganizacao(d: { razao: string; prestaiSlug: string }): Promise<void>;
+  buscarOrganizacaoPrestai(slug: string): Promise<BuscaPrestai>;
+  cadastrarOrganizacaoPrestai(slug: string): Promise<{ criados: number; ignorados: number }>;
   vincularSlugOrganizacao(id: string, slug: string | null): Promise<void>;
   vincularOrganizacao(id: string, prestaiOrg: string | null): Promise<void>;
   membros(org: string): Promise<Membro[]>;
