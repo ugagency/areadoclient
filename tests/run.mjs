@@ -290,6 +290,20 @@ await t('vínculo PrestAí: cliente não altera o identificador da organização
   await como(U.adminA, () => q(`update public.organizations set prestai_org_id=$1 where id=$2`, [id(555), ORG_A]), 'aal2');
   assert.equal((await q(`select prestai_org_id from public.organizations where id=$1`, [ORG_A]))[0].prestai_org_id, null);
 });
+await t('equipe sem MFA lê só a própria linha em staff, nunca as outras nem escreve', () => como(U.semMfa, async () => {
+  const r = await q(`select user_id from public.staff`);
+  assert.equal(r.length, 1);
+  assert.equal(r[0].user_id, U.semMfa);
+  const alt = await q(`update public.staff set papel='admin' where user_id=$1 returning 1`, [U.semMfa]);
+  assert.equal(alt.length, 0);
+  await nega(q(`insert into public.staff (user_id, nome, papel) values ($1,'x','admin')`, [U.adminA]));
+}));
+await t('cliente não enxerga nenhuma linha de staff', () => como(U.adminA, async () => {
+  assert.equal((await q(`select 1 from public.staff`)).length, 0);
+}));
+await t('equipe com MFA continua lendo todas as linhas de staff', () => como(U.equipe, async () => {
+  assert.ok((await q(`select 1 from public.staff`)).length >= 3);
+}, 'aal2'));
 await t('RLS ligada em todas as tabelas e funções sem execução pública', async () => {
   const semRls = await q(`select relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname='public' and c.relkind='r' and not c.relrowsecurity`);
