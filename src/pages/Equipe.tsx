@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, data, mensagemErro } from '../lib/api';
-import { PADRAO_UUID, ROTULO_TIPO, type Categoria, type Chamado, type Material, type Membro, type Organizacao, type ProjetoEquipe } from '../lib/tipos';
+import { PADRAO_SLUG, PADRAO_UUID, ROTULO_TIPO, type Categoria, type Chamado, type Material, type Membro, type Organizacao, type ProjetoEquipe } from '../lib/tipos';
 import { useApp } from '../main';
 import { SeloStatus } from './Suporte';
 
@@ -39,7 +39,7 @@ function PassoMfa() {
   );
 }
 
-function IdPrestai({ rotulo, valor, aoSalvar }: { rotulo: string; valor: string | null; aoSalvar: (v: string | null) => Promise<void> }) {
+function IdPrestai({ rotulo, valor, aoSalvar, padrao = PADRAO_UUID, dica = 'uuid do PrestAí' }: { rotulo: string; valor: string | null; aoSalvar: (v: string | null) => Promise<void>; padrao?: string; dica?: string }) {
   const [edit, setEdit] = useState(false);
   const [txt, setTxt] = useState(valor ?? '');
   useEffect(() => { setTxt(valor ?? ''); }, [valor]);
@@ -58,7 +58,7 @@ function IdPrestai({ rotulo, valor, aoSalvar }: { rotulo: string; valor: string 
       await aoSalvar(txt.trim() || null);
       setEdit(false);
     }}>
-      <input aria-label={rotulo} placeholder="uuid do PrestAí" pattern={PADRAO_UUID} value={txt} onChange={(e) => setTxt(e.target.value)} style={{ minWidth: 280 }} />
+      <input aria-label={rotulo} placeholder={dica} pattern={padrao} value={txt} onChange={(e) => setTxt(e.target.value)} style={{ minWidth: 280 }} />
       <button className="btn pequeno">Salvar</button>
       <button type="button" className="btn contorno pequeno" onClick={() => { setTxt(valor ?? ''); setEdit(false); }}>Cancelar</button>
     </form>
@@ -72,7 +72,7 @@ function Organizacoes() {
   const [projetos, setProjetos] = useState<ProjetoEquipe[]>([]);
   const [novoProj, setNovoProj] = useState({ pronac: '', nome: '', prestaiProjeto: '' });
   const [lote, setLote] = useState('');
-  const [nova, setNova] = useState({ razao: '', cnpj: '', prestaiOrg: '' });
+  const [nova, setNova] = useState({ razao: '', cnpj: '', prestaiOrg: '', prestaiSlug: '' });
   const [conv, setConv] = useState({ nome: '', email: '', papel: 'admin' });
   const [erro, setErro] = useState('');
   const [ok, setOk] = useState('');
@@ -95,19 +95,19 @@ function Organizacoes() {
       <div>
         <form className="card" style={{ marginBottom: 16 }} onSubmit={(e) => {
           e.preventDefault();
-          tentar(async () => { await api.criarOrganizacao(nova); setNova({ razao: '', cnpj: '', prestaiOrg: '' }); await carregar(); });
+          tentar(async () => { await api.criarOrganizacao(nova); setNova({ razao: '', cnpj: '', prestaiOrg: '', prestaiSlug: '' }); await carregar(); });
         }}>
           <h2 className="h2" style={{ marginBottom: 16 }}>Nova organização</h2>
           <label className="campo"><span>Razão social</span><input required value={nova.razao} onChange={(e) => setNova({ ...nova, razao: e.target.value })} /></label>
           <label className="campo"><span>CNPJ (opcional)</span><input pattern="[0-9]{2}\.?[0-9]{3}\.?[0-9]{3}\/?[0-9]{4}-?[0-9]{2}" title="CNPJ com 14 dígitos" value={nova.cnpj} onChange={(e) => setNova({ ...nova, cnpj: e.target.value })} /></label>
-          <label className="campo"><span>ID da organização no PrestAí</span><input pattern={PADRAO_UUID} placeholder="uuid copiado do PrestAí" value={nova.prestaiOrg} onChange={(e) => setNova({ ...nova, prestaiOrg: e.target.value })} /></label>
+          <label className="campo"><span>Slug da organização no PrestAí</span><input pattern={PADRAO_SLUG} title="Letras minúsculas, números e hífens, como aparece na tela de suporte do PrestAí" placeholder="instituto-exemplo" value={nova.prestaiSlug} onChange={(e) => setNova({ ...nova, prestaiSlug: e.target.value.trim().toLowerCase() })} /></label>
           <button className="btn pequeno">Criar</button>
         </form>
         <div className="lista">
           {orgs.map((o) => (
             <button key={o.id} className="linha" style={{ textAlign: 'left', cursor: 'pointer', width: '100%' }} onClick={() => verMembros(o)}>
-              <div className="corpo"><b>{o.razao_social}</b><div className="fraco">{o.cnpj ?? 'Sem CNPJ'}</div></div>
-              {!o.prestai_org_id && <span className="selo vez">Sem ID PrestAí</span>}
+              <div className="corpo"><b>{o.razao_social}</b><div className="fraco">{o.prestai_org_slug ?? 'Sem slug do PrestAí'}{o.cnpj ? ` · ${o.cnpj}` : ''}</div></div>
+              {!o.prestai_org_slug && <span className="selo vez">Sem vínculo</span>}
               <span className="selo">{o.status}</span>
             </button>
           ))}
@@ -120,7 +120,8 @@ function Organizacoes() {
           <>
             <h2 className="h2" style={{ marginBottom: 10 }}>{sel.razao_social}</h2>
             <div style={{ marginBottom: 16 }}>
-              <IdPrestai rotulo="ID no PrestAí" valor={sel.prestai_org_id} aoSalvar={async (v) => { await tentar(async () => { await api.vincularOrganizacao(sel.id, v); await recarregarSel(sel.id); }, 'Vínculo atualizado.'); }} />
+              <IdPrestai rotulo="Slug no PrestAí" valor={sel.prestai_org_slug} padrao={PADRAO_SLUG} dica="instituto-exemplo" aoSalvar={async (v) => { await tentar(async () => { await api.vincularSlugOrganizacao(sel.id, v); await recarregarSel(sel.id); }, 'Vínculo atualizado.'); }} />
+              <IdPrestai rotulo="ID (uuid) no PrestAí, opcional" valor={sel.prestai_org_id} aoSalvar={async (v) => { await tentar(async () => { await api.vincularOrganizacao(sel.id, v); await recarregarSel(sel.id); }, 'Vínculo atualizado.'); }} />
             </div>
             <div className="lista" style={{ marginBottom: 20 }}>
               {membros.map((m) => (

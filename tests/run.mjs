@@ -304,6 +304,17 @@ await t('cliente não enxerga nenhuma linha de staff', () => como(U.adminA, asyn
 await t('equipe com MFA continua lendo todas as linhas de staff', () => como(U.equipe, async () => {
   assert.ok((await q(`select 1 from public.staff`)).length >= 3);
 }, 'aal2'));
+await t('slug do PrestAí: formato válido e único por organização', () => como(COM, async () => {
+  await q(`update public.organizations set prestai_org_slug='instituto-exemplo' where id=$1`, [ORG_C]);
+  await nega(q(`update public.organizations set prestai_org_slug='instituto-exemplo' where id=$1`, [ORG_A]), /duplicate key|unique/);
+  for (const ruim of ['Instituto', 'associa-o-', '-abc', 'a--b', 'a b', 'ação']) {
+    await nega(q(`update public.organizations set prestai_org_slug=$1 where id=$2`, [ruim, ORG_A]), /check|violates/);
+  }
+}, 'aal2'));
+await t('cliente não altera o slug da organização', () => como(U.adminA, async () => {
+  await q(`update public.organizations set prestai_org_slug='invasor' where id=$1`, [ORG_A]);
+  assert.equal((await q(`select prestai_org_slug from public.organizations where id=$1`, [ORG_A]))[0].prestai_org_slug, null);
+}, 'aal2'));
 await t('RLS ligada em todas as tabelas e funções sem execução pública', async () => {
   const semRls = await q(`select relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname='public' and c.relkind='r' and not c.relrowsecurity`);

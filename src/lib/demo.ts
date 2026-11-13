@@ -7,8 +7,8 @@ const atras = (h: number) => new Date(Date.now() - h * 3600e3).toISOString();
 const gid = () => Math.random().toString(36).slice(2);
 
 const orgs: Organizacao[] = [
-  { id: 'org1', razao_social: 'Instituto Exemplo de Cultura', cnpj: '00000000000100', status: 'ativa', prestai_org_id: '6f1c2a40-0000-4000-8000-000000000001' },
-  { id: 'org2', razao_social: 'Associação Modelo das Artes', cnpj: null, status: 'ativa', prestai_org_id: null },
+  { id: 'org1', razao_social: 'Instituto Exemplo de Cultura', cnpj: '00000000000100', status: 'ativa', prestai_org_id: null, prestai_org_slug: 'instituto-exemplo' },
+  { id: 'org2', razao_social: 'Associação Modelo das Artes', cnpj: null, status: 'ativa', prestai_org_id: null, prestai_org_slug: null },
 ];
 const projetos: Record<string, ProjetoEquipe[]> = {
   org1: [{ id: 'p1', pronac: '000001', nome: 'Projeto de exemplo', ativo: true, prestai_project_id: null }],
@@ -105,9 +105,10 @@ export const demo: Api = {
   async organizacoes() { return orgs; },
   async criarOrganizacao(d) {
     const id = gid();
-    orgs.push({ id, razao_social: d.razao, cnpj: d.cnpj.replace(/\D/g, '') || null, status: 'ativa', prestai_org_id: d.prestaiOrg || null });
+    orgs.push({ id, razao_social: d.razao, cnpj: d.cnpj.replace(/\D/g, '') || null, status: 'ativa', prestai_org_id: d.prestaiOrg || null, prestai_org_slug: d.prestaiSlug.trim().toLowerCase() || null });
     membros[id] = []; projetos[id] = [];
   },
+  async vincularSlugOrganizacao(id, s) { orgs.find((o) => o.id === id)!.prestai_org_slug = s; },
   async vincularOrganizacao(id, p) { orgs.find((o) => o.id === id)!.prestai_org_id = p; },
   async membros(org) { return membros[org] ?? []; },
   async vincularMembro(id, p) { Object.values(membros).flat().filter((m) => m.id === id).forEach((m) => { m.prestai_user_id = p; }); },
