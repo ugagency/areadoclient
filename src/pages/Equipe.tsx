@@ -71,6 +71,7 @@ function Organizacoes() {
   const [membros, setMembros] = useState<Membro[]>([]);
   const [projetos, setProjetos] = useState<ProjetoEquipe[]>([]);
   const [novoProj, setNovoProj] = useState({ pronac: '', nome: '', prestaiProjeto: '' });
+  const [lote, setLote] = useState('');
   const [nova, setNova] = useState({ razao: '', cnpj: '', prestaiOrg: '' });
   const [conv, setConv] = useState({ nome: '', email: '', papel: 'admin' });
   const [erro, setErro] = useState('');
@@ -84,9 +85,9 @@ function Organizacoes() {
     const o = lista.find((x) => x.id === id); if (o) await verMembros(o);
   };
 
-  async function tentar(fn: () => Promise<void>, sucesso = '') {
+  async function tentar(fn: () => Promise<void | string>, sucesso = '') {
     setErro(''); setOk('');
-    try { await fn(); setOk(sucesso); } catch (x) { setErro(mensagemErro(x)); }
+    try { const msg = await fn(); setOk(typeof msg === 'string' ? msg : sucesso); } catch (x) { setErro(mensagemErro(x)); }
   }
 
   return (
@@ -165,6 +166,25 @@ function Organizacoes() {
               <label className="campo"><span>Nome do projeto</span><input required value={novoProj.nome} onChange={(e) => setNovoProj({ ...novoProj, nome: e.target.value })} /></label>
               <label className="campo"><span>ID do projeto no PrestAí (opcional)</span><input pattern={PADRAO_UUID} value={novoProj.prestaiProjeto} onChange={(e) => setNovoProj({ ...novoProj, prestaiProjeto: e.target.value })} /></label>
               <button className="btn pequeno">Criar projeto</button>
+            </form>
+            <form style={{ marginTop: 20 }} onSubmit={(e) => {
+              e.preventDefault();
+              const itens = lote.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
+                const [pronac, ...resto] = l.split(/[;\t]/);
+                return { pronac: (pronac ?? '').trim(), nome: resto.join(' ').trim() };
+              });
+              const ruins = itens.filter((i) => !i.pronac || !i.nome).length;
+              if (!itens.length || ruins) { setErro(ruins ? `${ruins} linha(s) sem PRONAC ou sem nome. Use: PRONAC;Nome do projeto.` : 'Cole ao menos uma linha.'); return; }
+              tentar(async () => {
+                const r = await api.importarProjetos(sel.id, itens);
+                setLote(''); await verMembros(sel);
+                return `${r.criados} projeto(s) cadastrado(s)${r.ignorados ? `, ${r.ignorados} já existiam` : ''}.`;
+              });
+            }}>
+              <label className="campo"><span>Importar vários projetos (uma linha por projeto: PRONAC;Nome)</span>
+                <textarea rows={5} value={lote} onChange={(e) => setLote(e.target.value)} placeholder={'230001;Festival de Música\n230002;Oficina de Teatro'} />
+              </label>
+              <button className="btn contorno pequeno">Importar projetos</button>
             </form>
           </>
         )}

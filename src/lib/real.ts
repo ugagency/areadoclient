@@ -173,6 +173,13 @@ export const real: Api = {
       organization_id: org, pronac: d.pronac.trim(), nome: d.nome.trim(), prestai_project_id: d.prestaiProjeto.trim() || null,
     }));
   },
+  async importarProjetos(org, itens) {
+    if (!itens.length) return { criados: 0, ignorados: 0 };
+    const linhas = itens.map((i) => ({ organization_id: org, pronac: i.pronac.trim(), nome: i.nome.trim() }));
+    const novos = ok<any[]>(await sb.from('projects')
+      .upsert(linhas, { onConflict: 'organization_id,pronac', ignoreDuplicates: true }).select('id'));
+    return { criados: novos.length, ignorados: linhas.length - novos.length };
+  },
   async vincularProjeto(id, prestaiProjeto) {
     ok(await sb.from('projects').update({ prestai_project_id: prestaiProjeto }).eq('id', id));
   },

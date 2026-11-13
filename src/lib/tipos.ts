@@ -114,6 +114,8 @@ export type Api = {
   vincularMembro(id: string, prestaiUser: string | null): Promise<void>;
   projetosOrg(org: string): Promise<ProjetoEquipe[]>;
   criarProjeto(org: string, d: { pronac: string; nome: string; prestaiProjeto: string }): Promise<void>;
+  /** Cadastra vários projetos de uma vez. PRONAC já existente na organização é ignorado. */
+  importarProjetos(org: string, itens: { pronac: string; nome: string }[]): Promise<{ criados: number; ignorados: number }>;
   vincularProjeto(id: string, prestaiProjeto: string | null): Promise<void>;
   convidar(org: string, email: string, nome: string, papel: string): Promise<void>;
   alterarMembro(id: string, situacao: string): Promise<void>;

@@ -115,6 +115,15 @@ export const demo: Api = {
   async criarProjeto(org, d) {
     (projetos[org] ??= []).push({ id: gid(), pronac: d.pronac, nome: d.nome, ativo: true, prestai_project_id: d.prestaiProjeto || null });
   },
+  async importarProjetos(org, itens) {
+    const lista = (projetos[org] ??= []);
+    let criados = 0;
+    for (const i of itens) {
+      if (lista.some((p) => p.pronac === i.pronac.trim())) continue;
+      lista.push({ id: gid(), pronac: i.pronac.trim(), nome: i.nome.trim(), ativo: true, prestai_project_id: null }); criados++;
+    }
+    return { criados, ignorados: itens.length - criados };
+  },
   async vincularProjeto(id, p) { Object.values(projetos).flat().filter((x) => x.id === id).forEach((x) => { x.prestai_project_id = p; }); },
   async convidar(org, _email, nome, papel) {
     (membros[org] ??= []).push({ id: gid(), nome, papel: papel as any, situacao: 'convidado', user_id: gid(), prestai_user_id: null });
