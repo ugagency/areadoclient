@@ -15,9 +15,13 @@ function duplicado(m: string) {
   return 'Esse registro já existe.';
 }
 
+type FatorMfa = Awaited<ReturnType<Api['mfaIniciar']>>;
+let mfaEmCurso: Promise<FatorMfa> | null = null;
+
 function ok<T>(r: { data: T | null; error: { code?: string; message: string } | null }): T {
   if (r.error) {
     const msg = r.error.code === '23505' ? duplicado(r.error.message)
+      : r.error.code === '23514' && /cnpj/i.test(r.error.message) ? 'CNPJ inválido. Informe os 14 dígitos.'
       : r.error.code && REGRA.has(r.error.code) ? r.error.message : 'Não foi possível concluir. Tente de novo.';
     throw new ErroApp(msg);
   }
@@ -34,6 +38,14 @@ const SEL = '*, chamado_categorias(nome), projects(pronac), organizations(razao_
 
 const assinada = async (bucket: string, path: string) =>
   ok(await sb.storage.from(bucket).createSignedUrl(path, 300)).signedUrl;
+
+async function mfaIniciarUmaVez(): Promise<FatorMfa> {
+  const fatores = ok(await sb.auth.mfa.listFactors());
+  const pronto = fatores.totp.find((f) => f.status === 'verified');
+  if (pronto) return { fatorId: pronto.id, qr: null, segredo: null };
+  const f = ok<any>((await sb.auth.mfa.enroll({ factorType: 'totp' })) as any);
+  return { fatorId: f.id as string, qr: f.totp.qr_code as string, segredo: f.totp.secret as string };
+}
 
 export const real: Api = {
   demo: false,
@@ -127,12 +139,9 @@ export const real: Api = {
   },
   urlMaterial: (path) => assinada('materiais', path),
 
-  async mfaIniciar() {
-    const fatores = ok(await sb.auth.mfa.listFactors());
-    const pronto = fatores.totp.find((f) => f.status === 'verified');
-    if (pronto) return { fatorId: pronto.id, qr: null, segredo: null };
-    const f = ok<any>((await sb.auth.mfa.enroll({ factorType: 'totp' })) as any);
-    return { fatorId: f.id, qr: f.totp.qr_code, segredo: f.totp.secret };
+  mfaIniciar() {
+    // Em desenvolvimento o React executa o efeito duas vezes; sem isso saem dois cadastros de fator.
+    return (mfaEmCurso ??= mfaIniciarUmaVez().finally(() => { mfaEmCurso = null; }));
   },
   async mfaConfirmar(fatorId, codigo) {
     const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: fatorId, code: codigo });

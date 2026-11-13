@@ -98,7 +98,7 @@ function Organizacoes() {
         }}>
           <h2 className="h2" style={{ marginBottom: 16 }}>Nova organização</h2>
           <label className="campo"><span>Razão social</span><input required value={nova.razao} onChange={(e) => setNova({ ...nova, razao: e.target.value })} /></label>
-          <label className="campo"><span>CNPJ (opcional)</span><input pattern="[0-9./\-]{14,18}" value={nova.cnpj} onChange={(e) => setNova({ ...nova, cnpj: e.target.value })} /></label>
+          <label className="campo"><span>CNPJ (opcional)</span><input pattern="[0-9]{2}\.?[0-9]{3}\.?[0-9]{3}\/?[0-9]{4}-?[0-9]{2}" title="CNPJ com 14 dígitos" value={nova.cnpj} onChange={(e) => setNova({ ...nova, cnpj: e.target.value })} /></label>
           <label className="campo"><span>ID da organização no PrestAí</span><input pattern={PADRAO_UUID} placeholder="uuid copiado do PrestAí" value={nova.prestaiOrg} onChange={(e) => setNova({ ...nova, prestaiOrg: e.target.value })} /></label>
           <button className="btn pequeno">Criar</button>
         </form>
