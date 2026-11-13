@@ -1,6 +1,7 @@
 // FUNCAO PARA PUBLICAR NO PROJETO SUPABASE DO PRESTAÍ (nome: consulta-organizacao).
 // NAO PUBLICADA. Responde, a quem tem o segredo, o nome e os projetos de uma organização
-// a partir do slug. Só leitura. Não devolve usuários, documentos nem valores.
+// a partir do slug. Só leitura. Devolve também e-mail, nome e papel dos usuários da organização.
+// Não devolve documentos, valores nem senhas.
 //
 // Segredo necessário no PrestAí: CLIENTE_API_SECRET (texto longo e aleatório).
 // O mesmo valor vai na Área do Cliente como PRESTAI_API_SECRET, e a URL desta função como
@@ -38,5 +39,15 @@ Deno.serve(async (req) => {
   const { data: projetos } = await db.from('projects').select('id, pronac, nome')
     .eq('organization_id', org.id).order('created_at', { ascending: true });
 
-  return resposta({ id: org.id, nome: org.nome, slug: org.slug, ativo: org.ativo, projetos: projetos ?? [] });
+  // Usuários da organização: só e-mail, nome (se houver) e papel na organização (admin ou membro).
+  const { data: vinculos } = await db.from('organization_users').select('user_id, role').eq('organization_id', org.id);
+  const usuarios = (await Promise.all((vinculos ?? []).map(async (v) => {
+    const { data } = await db.auth.admin.getUserById(v.user_id);
+    const email = data?.user?.email;
+    if (!email) return null;
+    const nome = data.user.user_metadata?.nome;
+    return { email, nome: typeof nome === 'string' ? nome : null, papel: v.role === 'admin' ? 'admin' : 'membro' };
+  }))).filter(Boolean);
+
+  return resposta({ id: org.id, nome: org.nome, slug: org.slug, ativo: org.ativo, projetos: projetos ?? [], usuarios });
 });

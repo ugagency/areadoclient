@@ -76,6 +76,8 @@ function Organizacoes() {
   const [slugBusca, setSlugBusca] = useState('');
   const [achada, setAchada] = useState<BuscaPrestai | null>(null);
   const [statusBusca, setStatusBusca] = useState('');
+  // E-mail marcado para convite -> papel escolhido. Começa vazio: ninguém é convidado sem ser marcado.
+  const [marcados, setMarcados] = useState<Record<string, 'admin' | 'membro'>>({});
   const [conv, setConv] = useState({ nome: '', email: '', papel: 'admin' });
   const [erro, setErro] = useState('');
   const [ok, setOk] = useState('');
@@ -90,7 +92,7 @@ function Organizacoes() {
 
   // Ao digitar o slug, a organização é buscada sozinha no PrestAí (com pequena espera entre as teclas).
   useEffect(() => {
-    setAchada(null);
+    setAchada(null); setMarcados({});
     if (!slugBusca) { setStatusBusca(''); return; }
     if (slugBusca.length < 2 || !new RegExp(`^${PADRAO_SLUG}$`).test(slugBusca)) {
       setStatusBusca('Use letras minúsculas, números e hífens.'); return;
@@ -133,11 +135,46 @@ function Organizacoes() {
                   {achada.projetos.length > 6 && <li>e mais {achada.projetos.length - 6}</li>}
                 </ul>
               )}
+              {achada.usuarios.length > 0 && (
+                <div style={{ margin: '0 0 12px' }}>
+                  <div className="fraco" style={{ marginBottom: 6 }}>
+                    Usuários no PrestAí. Marque quem deve receber convite (ninguém é convidado sem marcar).
+                  </div>
+                  <div className="lista">
+                    {achada.usuarios.map((u) => (
+                      <div key={u.email} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <label style={{ display: 'flex', gap: 8, alignItems: 'center', flex: 1, minWidth: 200 }}>
+                          <input type="checkbox" checked={!!marcados[u.email]} disabled={achada.jaCadastrada}
+                            onChange={(e) => setMarcados((m) => {
+                              const n = { ...m }; if (e.target.checked) n[u.email] = u.papel; else delete n[u.email]; return n;
+                            })} />
+                          <span>
+                            <b style={{ fontSize: 14.5 }}>{u.nome}</b>{u.nomeProvisorio && <span className="fraco"> (nome provisório)</span>}
+                            <div className="fraco">{u.email}</div>
+                          </span>
+                        </label>
+                        <select aria-label={`Papel de ${u.email}`} disabled={!marcados[u.email]} value={marcados[u.email] ?? u.papel}
+                          onChange={(e) => setMarcados((m) => ({ ...m, [u.email]: e.target.value as 'admin' | 'membro' }))}>
+                          <option value="admin">Administrador</option><option value="membro">Membro</option>
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <button className="btn pequeno" disabled={achada.jaCadastrada || !achada.ativa} onClick={() => tentar(async () => {
                 const r = await api.cadastrarOrganizacaoPrestai(achada.slug);
-                setSlugBusca(''); setAchada(null); await carregar();
-                return `Organização cadastrada com ${r.criados} projeto(s).`;
-              })}>Cadastrar organização e projetos</button>
+                const alvos = achada.usuarios.filter((u) => marcados[u.email]);
+                const falhas: string[] = [];
+                let enviados = 0;
+                for (const u of alvos) {
+                  try { await api.convidar(r.organizationId, u.email, u.nome, marcados[u.email]); enviados++; }
+                  catch (x) { falhas.push(`${u.email}: ${mensagemErro(x)}`); }
+                }
+                setSlugBusca(''); setAchada(null); setMarcados({}); await carregar();
+                if (falhas.length) setErro(`Convites não enviados (${falhas.length}): ${falhas.join(' | ')}. A organização foi cadastrada; reenvie por ela.`);
+                return `Organização cadastrada com ${r.criados} projeto(s)` + (alvos.length ? ` e ${enviados} convite(s) enviado(s).` : '.');
+              })}>{Object.keys(marcados).length ? `Cadastrar e convidar ${Object.keys(marcados).length} pessoa(s)` : 'Cadastrar organização e projetos'}</button>
             </div>
           )}
           <details style={{ marginTop: 16 }}>

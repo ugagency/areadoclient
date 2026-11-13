@@ -164,7 +164,7 @@ export const real: Api = {
   async cadastrarOrganizacaoPrestai(slug) {
     const { data, error } = await sb.functions.invoke('organizacao-prestai', { body: { acao: 'cadastrar', slug } });
     if (error || data?.erro) throw new ErroApp(data?.erro ?? 'Não foi possível cadastrar a organização.');
-    return { criados: data.criados, ignorados: data.ignorados };
+    return { organizationId: data.organization_id, criados: data.criados, ignorados: data.ignorados };
   },
   async vincularSlugOrganizacao(id, slug) {
     ok(await sb.from('organizations').update({ prestai_org_slug: slug ? slug.trim().toLowerCase() : null }).eq('id', id));

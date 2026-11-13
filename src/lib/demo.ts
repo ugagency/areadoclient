@@ -1,6 +1,6 @@
 // Dados fictícios em memória, para demonstração e verificação de tela sem Supabase.
 // Só entra no pacote com VITE_DEMO=1.
-import type { Api, Categoria, Chamado, Material, Membro, Mensagem, Organizacao, ProjetoEquipe, Sessao } from './tipos';
+import type { Api, Categoria, Chamado, Material, Membro, Mensagem, Organizacao, ProjetoEquipe, Sessao, UsuarioPrestai } from './tipos';
 
 const agora = () => new Date().toISOString();
 const atras = (h: number) => new Date(Date.now() - h * 3600e3).toISOString();
@@ -109,13 +109,20 @@ export const demo: Api = {
     membros[id] = []; projetos[id] = [];
   },
   async buscarOrganizacaoPrestai(slug) {
-    const base: Record<string, { nome: string; projetos: { pronac: string; nome: string }[] }> = {
-      'instituto-exemplo': { nome: 'Instituto Exemplo de Cultura', projetos: [{ pronac: '000001', nome: 'Projeto de exemplo' }] },
-      'associacao-modelo': { nome: 'Associação Modelo das Artes', projetos: [{ pronac: '230001', nome: 'Festival de Música' }, { pronac: '230002', nome: 'Oficina de Teatro' }] },
+    const base: Record<string, { nome: string; projetos: { pronac: string; nome: string }[]; usuarios: UsuarioPrestai[] }> = {
+      'instituto-exemplo': { nome: 'Instituto Exemplo de Cultura', projetos: [{ pronac: '000001', nome: 'Projeto de exemplo' }], usuarios: [] },
+      'associacao-modelo': {
+        nome: 'Associação Modelo das Artes',
+        projetos: [{ pronac: '230001', nome: 'Festival de Música' }, { pronac: '230002', nome: 'Oficina de Teatro' }],
+        usuarios: [
+          { email: 'maria@modelo.example', nome: 'Maria Souza', papel: 'admin', nomeProvisorio: false },
+          { email: 'joao@modelo.example', nome: 'joao', papel: 'membro', nomeProvisorio: true },
+        ],
+      },
     };
     const o = base[slug];
     if (!o) throw new Error('Organização não encontrada no PrestAí.');
-    return { nome: o.nome, slug, ativa: true, jaCadastrada: orgs.some((x) => x.prestai_org_slug === slug), projetos: o.projetos };
+    return { nome: o.nome, slug, ativa: true, jaCadastrada: orgs.some((x) => x.prestai_org_slug === slug), projetos: o.projetos, usuarios: o.usuarios };
   },
   async cadastrarOrganizacaoPrestai(slug) {
     const o = await this.buscarOrganizacaoPrestai(slug);
@@ -124,7 +131,7 @@ export const demo: Api = {
     orgs.push({ id, razao_social: o.nome, status: 'ativa', prestai_org_id: null, prestai_org_slug: slug });
     membros[id] = [];
     projetos[id] = o.projetos.map((p) => ({ id: gid(), pronac: p.pronac!, nome: p.nome, ativo: true, prestai_project_id: null }));
-    return { criados: o.projetos.length, ignorados: 0 };
+    return { organizationId: id, criados: o.projetos.length, ignorados: 0 };
   },
   async vincularSlugOrganizacao(id, s) { orgs.find((o) => o.id === id)!.prestai_org_slug = s; },
   async vincularOrganizacao(id, p) { orgs.find((o) => o.id === id)!.prestai_org_id = p; },

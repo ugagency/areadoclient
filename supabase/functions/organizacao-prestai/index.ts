@@ -7,7 +7,31 @@ import { cors, json, servico } from '../_shared/comum.ts';
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type Dados = { id?: string; nome: string; slug: string; ativo?: boolean; projetos: { id?: string; pronac: string | null; nome: string }[] };
+type Dados = {
+  id?: string; nome: string; slug: string; ativo?: boolean;
+  projetos: { id?: string; pronac: string | null; nome: string }[];
+  usuarios?: { email?: string; nome?: string | null; papel?: string }[];
+};
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Normaliza os usuários vindos do PrestAí: e-mail válido e sem repetição; sem nome, usa a parte
+// do e-mail antes do @ e marca o nome como provisório; papel fora de admin/membro vira membro.
+function usuariosDe(d: Dados) {
+  const vistos = new Set<string>();
+  const saida: { email: string; nome: string; papel: 'admin' | 'membro'; nomeProvisorio: boolean }[] = [];
+  for (const u of d.usuarios ?? []) {
+    const email = typeof u.email === 'string' ? u.email.trim().toLowerCase() : '';
+    if (!EMAIL.test(email) || vistos.has(email)) continue;
+    vistos.add(email);
+    const nome = typeof u.nome === 'string' ? u.nome.trim() : '';
+    saida.push({
+      email, nome: nome || email.split('@')[0], papel: u.papel === 'admin' ? 'admin' : 'membro',
+      nomeProvisorio: !nome,
+    });
+  }
+  return saida;
+}
 
 async function consultarPrestai(slug: string): Promise<{ dados?: Dados; status?: number; erro?: string }> {
   const url = Deno.env.get('PRESTAI_API_URL');
@@ -65,6 +89,7 @@ Deno.serve(async (req) => {
     return json({
       nome: d.nome.trim(), slug, ativa: d.ativo !== false, jaCadastrada: !!existente,
       projetos: d.projetos.map((p) => ({ pronac: p.pronac ?? null, nome: p.nome })),
+      usuarios: usuariosDe(d),
     });
   }
 
